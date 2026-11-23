@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>거북목 화면 교정기</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"></script>
+  <style>
+    * { box-sizing: border-box; font-family: "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif; }
+    body {
+      margin: 0; padding: 14px 18px;
+      background: #0f172a; color: #f8fafc;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+    body.locked { overflow: hidden; cursor: none; user-select: none; }
+    .header {
+      width: 100%; max-width: 980px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+    }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    h1 { margin: 0; font-size: 22px; }
+    .badge {
+      padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 700;
+      background: #10b981; color: #052e16;
+    }
+    .badge.off { background: #64748b; color: #f8fafc; }
+    .badge.manner { background: #8b5cf6; color: #ffffff; display: none; }
+    .badge.manner.active { display: inline-block; }
+    .badge.demo { background: #f59e0b; color: #0f172a; display: none; }
+    .badge.demo.active { display: inline-block; }
+    .icon-btn {
+      width: auto; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+      background: #334155; color: #e2e8f0; border: 1px solid #475569; cursor: pointer;
+    }
+    .icon-btn:hover { background: #475569; }
+    .reset-btn:hover { background: #ef4444; border-color: #ef4444; color: #ffffff; }
+    .dashboard {
+      width: 100%; max-width: 980px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+    }
+    @media (max-width: 720px) { .dashboard { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      background: #1e293b; border-radius: 12px; padding: 12px 14px;
+      border: 1px solid #334155; display: flex; flex-direction: column; gap: 3px;
+    }
+    .stat-label { font-size: 12px; color: #94a3b8; font-weight: 600; }
+    .stat-value { font-size: 20px; font-weight: 800; color: #f8fafc; }
+    .stat-sub { font-size: 11px; color: #cbd5e1; }
+    .grade-good { color: #4ade80; }
+    .grade-mid { color: #fbbf24; }
+    .grade-bad { color: #f87171; }
+    .main-grid {
+      width: 100%; max-width: 980px;
+      display: grid; grid-template-columns: 1.45fr 1fr; gap: 14px; align-items: start;
+    }
+    @media (max-width: 820px) { .main-grid { grid-template-columns: 1fr; } }
+    .card {
+      background: #1e293b; border-radius: 16px; padding: 16px;
+      width: 100%; border: 1px solid #334155;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    }
+    .side-card { align-items: stretch; gap: 12px; }
+    .side-title { font-size: 14px; font-weight: 700; color: #e2e8f0; margin: 0; }
+    .weekly-chart {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px;
+      align-items: end; height: 92px; padding: 10px 8px 4px;
+      background: #0f172a; border-radius: 12px; border: 1px solid #334155;
+    }
+    .bar-col {
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      height: 100%; gap: 4px;
+    }
+    .bar-pct { font-size: 10px; color: #94a3b8; font-weight: 600; }
+    .bar-track {
+      width: 100%; max-width: 24px; height: 46px; background: #1e293b;
+      border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden;
+    }
+    .bar-inner { width: 100%; background: #38bdf8; border-radius: 6px; transition: height 0.25s ease; }
+    .bar-inner.good { background: #4ade80; }
+    .bar-inner.mid { background: #fbbf24; }
+    .bar-inner.bad { background: #f87171; }
+    .bar-inner.empty { background: #334155; }
+    .bar-day { font-size: 10px; color: #94a3b8; }
+    .settings-box {
+      background: #0f172a; border-radius: 12px; padding: 12px;
+      border: 1px solid #334155; display: flex; flex-direction: column; gap: 10px;
+    }
+    .setting-row { display: flex; flex-direction: column; gap: 4px; }
+    .setting-head {
+      display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1; font-weight: 600;
+    }
+    .setting-val { color: #38bdf8; font-weight: 700; }
+    .manner-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: #cbd5e1; font-weight: 600; padding-top: 2px;
+    }
+    .manner-row input { width: 16px; height: 16px; accent-color: #8b5cf6; cursor: pointer; }
+    input[type="range"] { width: 100%; accent-color: #3b82f6; cursor: pointer; }
+    .event-list {
+      list-style: none; margin: 0; padding: 0;
+      display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow-y: auto;
+    }
+    .event-item {
+      background: #0f172a; border-radius: 8px; padding: 8px 10px;
+      display: flex; justify-content: space-between; font-size: 12px; color: #cbd5e1;
+      border: 1px solid #1e293b;
+    }
+    .event-empty { font-size: 12px; color: #64748b; padding: 8px 0; text-align: center; }
+    .video-wrap {
+      position: relative; width: 100%; aspect-ratio: 4/3; max-height: 290px;
+      background: #020617; border-radius: 12px; overflow: hidden;
+    }
+    video { display: none; }
+    canvas { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    canvas.paused-canvas { transform: none; }
+    .status { font-size: 14px; font-weight: 600; color: #38bdf8; text-align: center; }
+    .status.warn { color: #f87171; }
+    .status.paused { color: #94a3b8; }
+    .bar-bg { width: 100%; height: 18px; background: #334155; border-radius: 999px; overflow: hidden; }
+    .bar-fill {
+      height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #f59e0b, #ef4444);
+      transition: width 0.15s ease;
+    }
+    .row { display: flex; justify-content: space-between; width: 100%; font-size: 13px; color: #cbd5e1; }
+    .btn-row { display: flex; gap: 10px; width: 100%; }
+    button {
+      width: 100%; padding: 11px; border: none; border-radius: 10px;
+      background: #3b82f6; color: white; font-size: 14px; font-weight: 700; cursor: pointer;
+    }
+    button:hover { background: #2563eb; }
+    .toggle-btn { background: #10b981; }
+    .toggle-btn:hover { background: #059669; }
+    .toggle-btn.off { background: #64748b; }
+    .toggle-btn.off:hover { background: #475569; }
+    .recalib-btn {
+      background: #334155; color: #e2e8f0; border: 1px solid #475569; font-size: 13px; padding: 9px;
+    }
+    .recalib-btn:hover { background: #475569; }
+    .lock-screen {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(15, 23, 42, 0.96);
+      display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+      color: #ffffff; padding: 32px; gap: 18px;
+      cursor: none; pointer-events: all; user-select: none;
+    }
+    .lock-screen.active { display: flex; }
+    .lock-title { font-size: 38px; font-weight: 800; color: #f87171; }
+    .lock-sub { font-size: 22px; font-weight: 600; color: #fde047; }
+    .lock-bar-wrap {
+      width: 100%; max-width: 460px; height: 24px;
+      background: #334155; border-radius: 999px; overflow: hidden;
+    }
+    .lock-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444);
+      transition: width 0.12s ease;
+    }
+    .lock-hint { font-size: 16px; color: #cbd5e1; }
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 8000;
+      background: rgba(2, 6, 23, 0.75);
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; background: #1e293b; border-radius: 16px;
+      border: 1px solid #475569; padding: 20px; display: flex; flex-direction: column; gap: 14px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.45);
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; }
+    .modal-title { margin: 0; font-size: 18px; font-weight: 800; color: #f8fafc; }
+    .modal-field {
+      display: flex; flex-direction: column; gap: 6px;
+      font-size: 13px; color: #cbd5e1; font-weight: 600;
+    }
+    .modal-select {
+      width: 100%; padding: 10px; border-radius: 8px;
+      background: #0f172a; color: #f8fafc; border: 1px solid #334155; font-size: 14px;
+    }
+    .modal-actions { display: flex; gap: 10px; }
+    .test-btn { background: #475569; }
+    .test-btn:hover { background: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="lock-screen" id="lockScreen">
+    <div class="lock-title" id="lockTitleText">거북목 주의! 바른 자세 해주세요</div>
+    <div class="lock-sub" id="lockSubText">현재 거북목 위험도: 0%</div>
+    <div class="lock-bar-wrap"><div class="lock-bar-fill" id="lockBarFill"></div></div>
+    <div class="lock-hint" id="lockHintText">위험도가 30% 이하로 내려가면 마우스·키보드 잠금이 풀리고 창이 숨겨집니다</div>
+  </div>
+
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">환경 설정</h2>
+      </div>
+      <div class="modal-field">
+        <label for="langSelect" id="langLabel">언어 선택 (Language)</label>
+        <select class="modal-select" id="langSelect">
+          <option value="ko">한국어 (Korean)</option>
+          <option value="en">English (영어)</option>
+          <option value="ja">日本語 (일본어)</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label for="alarmSelect" id="alarmLabel">누적 경고 알람 (오늘 기준)</label>
+        <select class="modal-select" id="alarmSelect">
+          <option value="0">사용 안 함</option>
+          <option value="1">1회 이상 경고 시 알람</option>
+          <option value="2">2회 이상 경고 시 알람</option>
+          <option value="3">3회 이상 경고 시 알람</option>
+          <option value="5">5회 이상 경고 시 알람</option>
+          <option value="10">10회 이상 경고 시 알람</option>
+        </select>
+      </div>
+      <div class="settings-box">
+        <div class="side-title" id="lblSettingsTitle" style="font-size: 13px; color: #94a3b8;">민감도 · 대기 시간 설정</div>
+        <div class="setting-row">
+          <div class="setting-head">
+            <span id="lblTriggerTime">거북목 판정 대기 시간</span>
+            <span class="setting-val" id="triggerVal">6초</span>
+          </div>
+          <input type="range" id="triggerSlider" min="3" max="15" step="1" value="6" />
+        </div>
+        <div class="setting-row">
+          <div class="setting-head">
+            <span id="lblSensitivity">감지 민감도 (위험도 기준)</span>
+            <span class="setting-val" id="badVal">45% (보통)</span>
+          </div>
+          <input type="range" id="badSlider" min="25" max="70" step="5" value="45" />
+        </div>
+        <label class="manner-row">
+          <span id="lblMannerMode">회의 자동 매너 모드 (Zoom·Discord 등)</span>
+          <input type="checkbox" id="mannerCheck" checked />
+        </label>
+        <div class="stat-sub" id="adaptiveMarginText">자동 보정 여유폭: +0% (3초 측정 시 자동 계산)</div>
+        <label class="manner-row">
+          <span id="lblDemoMode">발표용 1분 시연 모드 (1.5초 빠른 판정)</span>
+          <input type="checkbox" id="demoModeCheck" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="test-btn" id="testAlarmBtn">알람 소리 테스트</button>
+        <button id="closeModalBtn">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="header">
+    <h1 id="appTitle">거북목 화면 교정기</h1>
+    <div class="header-right">
+      <span class="badge demo" id="demoBadge">🎬 시연 60s</span>
+      <span class="badge manner" id="mannerBadge">회의 매너 모드</span>
+      <button class="icon-btn" id="openSettingsBtn">⚙️ 설정</button>
+      <button class="icon-btn reset-btn" id="resetBtn">기록 초기화</button>
+      <span class="badge" id="modeBadge">감지 ON</span>
+    </div>
+  </div>
+
+  <div class="dashboard">
+    <div class="stat-card">
+      <div class="stat-label" id="lblTodayStat">오늘 거북목 감지</div>
+      <div class="stat-value" id="todayCountDur">0회 · 0초</div>
+      <div class="stat-sub" id="todayAvgSub">오늘 평균 위험도 0%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label" id="lblTotalStat">지금까지 전체 누적</div>
+      <div class="stat-value" id="totalCountDur">0회 · 0초</div>
+      <div class="stat-sub" id="totalAvgSub">전체 평균 위험도 0%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label" id="lblTodayGrade">오늘 자세 평가</div>
+      <div class="stat-value grade-good" id="todayGrade">매우 좋음</div>
+      <div class="stat-sub" id="todayGoodSub">바른 자세 유지율 100%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label" id="lblTotalGrade">지금까지 자세 평가</div>
+      <div class="stat-value grade-good" id="totalGrade">매우 좋음</div>
+      <div class="stat-sub" id="totalGoodSub">전체 바른 자세 유지율 100%</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div class="card">
+      <div class="video-wrap">
+        <video id="video" playsinline autoplay muted></video>
+        <canvas id="canvas" width="640" height="480"></canvas>
+      </div>
+      <div class="row">
+        <span id="lblRisk">실시간 거북목 위험도</span>
+        <span id="scoreText">0%</span>
+      </div>
+      <div class="bar-bg"><div class="bar-fill" id="barFill"></div></div>
+      <div class="status" id="statusText">모델 로딩 대기</div>
+      <div class="btn-row">
+        <button id="calibBtn">3초 바른 자세 기준 설정</button>
+        <button class="toggle-btn" id="toggleBtn">감지 ON (끄기)</button>
+      </div>
+      <button class="recalib-btn" id="recalibBtn">지금 자세는 정상이에요 (기준 보정)</button>
+    </div>
+
+    <div class="card side-card">
+      <h2 class="side-title" id="lblWeekly">최근 7일 바른 자세 유지율</h2>
+      <div class="weekly-chart" id="weeklyChart"></div>
+
+      <h2 class="side-title" id="lblEvents">오늘 거북목 감지 기록</h2>
+      <ul class="event-list" id="eventList">
+        <li class="event-empty" id="eventEmpty">아직 감지된 기록이 없습니다.</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const I18N = {
+      ko: {
+        appTitle: "거북목 화면 교정기", settingsBtn: "⚙️ 설정", resetBtn: "기록 초기화",
+        todayStat: "오늘 거북목 감지", totalStat: "지금까지 전체 누적",
+        todayGrade: "오늘 자세 평가", totalGrade: "지금까지 자세 평가",
+        risk: "실시간 거북목 위험도", calibBtn: "3초 바른 자세 기준 설정",
+        recalibBtn: "지금 자세는 정상이에요 (기준 보정)", weekly: "최근 7일 바른 자세 유지율",
+        settingsTitle: "민감도 · 대기 시간 설정", triggerTime: "거북목 판정 대기 시간",
+        sensitivity: "감지 민감도 (위험도 기준)", mannerMode: "회의 자동 매너 모드 (Zoom·Discord 등)",
+        demoMode: "발표용 1분 시연 모드 (1.5초 빠른 판정)", events: "오늘 거북목 감지 기록",
+        noEvents: "아직 감지된 기록이 없습니다.", modelWait: "모델 로딩 대기",
+        needCalib: "기준 자세를 먼저 설정해 주세요.", goodPosture: "바른 자세 유지 중",
+        pausedStatus: "감지 OFF (웹캠이 꺼졌습니다)", pausedOff: "감지 OFF (일시정지 중)",
+        noPerson: "얼굴과 어깨가 화면에 보이게 앉아 주세요.",
+        lockTitle: "거북목 주의! 바른 자세 해주세요", onLabel: "감지 ON", offLabel: "감지 OFF",
+        onBtn: "감지 ON (끄기)", offBtn: "감지 OFF (켜기)", modalTitle: "환경 설정",
+        langLabel: "언어 선택 (Language)", alarmLabel: "누적 경고 알람 (오늘 기준)",
+        testAlarmBtn: "알람 소리 테스트", closeModalBtn: "확인",
+        gradeGood: "매우 좋음", gradeMid: "보통", gradeBad: "주의 필요"
+      },
+      en: {
+        appTitle: "Turtle Neck Posture Guard", settingsBtn: "⚙️ Settings", resetBtn: "Reset Stats",
+        todayStat: "Today's Detections", totalStat: "All-Time Total",
+        todayGrade: "Today's Posture", totalGrade: "Overall Posture",
+        risk: "Real-Time Posture Risk", calibBtn: "Set 3s Baseline Posture",
+        recalibBtn: "This posture is normal (Recalibrate)", weekly: "7-Day Good Posture Rate",
+        settingsTitle: "Sensitivity & Delay", triggerTime: "Trigger Delay",
+        sensitivity: "Detection Threshold", mannerMode: "Auto Meeting Mode (Zoom, Discord, etc.)",
+        demoMode: "1-Min Presentation Demo Mode (1.5s trigger)", events: "Today's Detection Log",
+        noEvents: "No detections recorded today.", modelWait: "Loading AI model",
+        needCalib: "Please set your 3s baseline posture first.", goodPosture: "Maintaining good posture",
+        pausedStatus: "Detection OFF (Camera stopped)", pausedOff: "Detection OFF (Paused)",
+        noPerson: "Keep your face and shoulders visible.",
+        lockTitle: "Posture Warning! Please sit up straight", onLabel: "ON", offLabel: "OFF",
+        onBtn: "Detection ON (Pause)", offBtn: "Detection OFF (Resume)", modalTitle: "Preferences",
+        langLabel: "Language", alarmLabel: "Sound Alarm After N Warnings Today",
+        testAlarmBtn: "Test Alarm Sound", closeModalBtn: "Done",
+        gradeGood: "Excellent", gradeMid: "Fair", gradeBad: "Needs Care"
+      },
+      ja: {
+        appTitle: "ストレートネック姿勢ガード", settingsBtn: "⚙️ 設定", resetBtn: "記録リセット",
+        todayStat: "今日の検知回数", totalStat: "これまでの累計",
+        todayGrade: "今日の姿勢評価", totalGrade: "全体の姿勢評価",
+        risk: "リアルタイム危険度", calibBtn: "3秒基準姿勢を設定",
+        recalibBtn: "この姿勢は正常です (基準補正)", weekly: "過去7日間の正しい姿勢率",
+        settingsTitle: "感度・待機時間の設定", triggerTime: "判定待機時間",
+        sensitivity: "検知感度 (危険度基準)", mannerMode: "会議自動マナーモード (Zoom・Discord等)",
+        demoMode: "発表用1分デモモード (1.5秒高速判定)", events: "今日の検知履歴",
+        noEvents: "まだ検知記録がありません。", modelWait: "モデル読み込み待機中",
+        needCalib: "先に基準姿勢を設定してください。", goodPosture: "正しい姿勢を維持中",
+        pausedStatus: "検知 OFF (カメラ停止)", pausedOff: "検知 OFF (一時停止中)",
+        noPerson: "顔と肩が画面に映るように座ってください。",
+        lockTitle: "姿勢注意！背筋を伸ばしてください", onLabel: "ON", offLabel: "OFF",
+        onBtn: "検知 ON (停止)", offBtn: "検知 OFF (再開)", modalTitle: "環境設定",
+        langLabel: "言語選択 (Language)", alarmLabel: "累積警告アラーム (本日基準)",
+        testAlarmBtn: "アラーム音テスト", closeModalBtn: "閉じる",
+        gradeGood: "とても良い", gradeMid: "普通", gradeBad: "要注意"
+      }
+    };
+
+    let currentLang = "ko";
+    function t(key) { return (I18N[currentLang] && I18N[currentLang][key]) || I18N.ko[key] || key; }
+
+    const videoEl = document.getElementById("video");
+    const canvasEl = document.getElementById("canvas");
+    const ctx = canvasEl.getContext("2d");
+    const statusText = document.getElementById("statusText");
+    const scoreText = document.getElementById("scoreText");
+    const barFill = document.getElementById("barFill");
+    const calibBtn = document.getElementById("calibBtn");
+    const toggleBtn = document.getElementById("toggleBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const modeBadge = document.getElementById("modeBadge");
+    const lockScreen = document.getElementById("lockScreen");
+    const lockTitleText = document.getElementById("lockTitleText");
+    const lockSubText = document.getElementById("lockSubText");
+    const lockBarFill = document.getElementById("lockBarFill");
+    const lockHintText = document.getElementById("lockHintText");
+
+    const settingsModal = document.getElementById("settingsModal");
+    const openSettingsBtn = document.getElementById("openSettingsBtn");
+    const closeModalBtn = document.getElementById("closeModalBtn");
+    const langSelect = document.getElementById("langSelect");
+    const alarmSelect = document.getElementById("alarmSelect");
+    const testAlarmBtn = document.getElementById("testAlarmBtn");
+
+    const todayCountDur = document.getElementById("todayCountDur");
+    const todayAvgSub = document.getElementById("todayAvgSub");
+    const totalCountDur = document.getElementById("totalCountDur");
+    const totalAvgSub = document.getElementById("totalAvgSub");
+    const todayGrade = document.getElementById("todayGrade");
+    const todayGoodSub = document.getElementById("todayGoodSub");
+    const totalGrade = document.getElementById("totalGrade");
+    const totalGoodSub = document.getElementById("totalGoodSub");
+    const weeklyChart = document.getElementById("weeklyChart");
+    const eventList = document.getElementById("eventList");
+
+    const triggerSlider = document.getElementById("triggerSlider");
+    const triggerVal = document.getElementById("triggerVal");
+    const badSlider = document.getElementById("badSlider");
+    const badVal = document.getElementById("badVal");
+    const mannerCheck = document.getElementById("mannerCheck");
+    const mannerBadge = document.getElementById("mannerBadge");
+    const demoBadge = document.getElementById("demoBadge");
+    const demoModeCheck = document.getElementById("demoModeCheck");
+    const recalibBtn = document.getElementById("recalibBtn");
+    const adaptiveMarginText = document.getElementById("adaptiveMarginText");
+
+    let demoModeActive = false, demoRemainSec = 60, demoInterval = null;
+    let badThreshold = 45, recoveryThreshold = 30, triggerSec = 6.0, noiseMargin = 0;
+    let mannerModeEnabled = true, alarmThreshold = 3, activeMeetingApp = "", latestMetrics = null;
+    let calibrating = false, calibStart = 0, calibSamples = [];
+    let baseEyeDist = null, baseNeckRatio = null, emaScore = 0, badSince = null;
+    let warningActive = false, enabled = true, lastSent = 0, processing = false;
+    let mediaStream = null, poseTimer = null;
+
+    const getPyApi = () => window.pywebview && window.pywebview.api;
+
+    const blockEvent = (e) => {
+      if (!warningActive) return;
+      e.preventDefault(); e.stopPropagation(); return false;
+    };
+    for (const evt of ["keydown", "keyup", "keypress", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "wheel"]) {
+      window.addEventListener(evt, blockEvent, { capture: true, passive: false });
+    }
+
+    function applyLanguageTexts() {
+      document.getElementById("appTitle").textContent = t("appTitle");
+      openSettingsBtn.textContent = t("settingsBtn");
+      resetBtn.textContent = t("resetBtn");
+      document.getElementById("lblTodayStat").textContent = t("todayStat");
+      document.getElementById("lblTotalStat").textContent = t("totalStat");
+      document.getElementById("lblTodayGrade").textContent = t("todayGrade");
+      document.getElementById("lblTotalGrade").textContent = t("totalGrade");
+      document.getElementById("lblRisk").textContent = t("risk");
+      calibBtn.textContent = t("calibBtn");
+      recalibBtn.textContent = t("recalibBtn");
+      document.getElementById("lblWeekly").textContent = t("weekly");
+      document.getElementById("lblSettingsTitle").textContent = t("settingsTitle");
+      document.getElementById("lblTriggerTime").textContent = t("triggerTime");
+      document.getElementById("lblSensitivity").textContent = t("sensitivity");
+      document.getElementById("lblMannerMode").textContent = t("mannerMode");
+      document.getElementById("lblDemoMode").textContent = t("demoMode");
+      document.getElementById("lblEvents").textContent = t("events");
+      lockTitleText.textContent = t("lockTitle");
+      document.getElementById("modalTitle").textContent = t("modalTitle");
+      document.getElementById("langLabel").textContent = t("langLabel");
+      document.getElementById("alarmLabel").textContent = t("alarmLabel");
+      testAlarmBtn.textContent = t("testAlarmBtn");
+      closeModalBtn.textContent = t("closeModalBtn");
+      updateToggleButton();
+      updateSettingsLabels();
+    }
+
+    function fmtDur(sec) {
+      const s = Math.max(0, Math.floor(sec || 0));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), rem = s % 60;
+      if (currentLang === "en") return h > 0 ? `${h}h ${m}m` : (m > 0 ? `${m}m ${rem}s` : `${rem}s`);
+      if (currentLang === "ja") return h > 0 ? `${h}時間 ${m}分` : (m > 0 ? `${m}分 ${rem}秒` : `${rem}秒`);
+      return h > 0 ? `${h}시간 ${m}분` : (m > 0 ? `${m}분 ${rem}초` : `${rem}초`);
+    }
+
+    function applyGrade(el, goodPct) {
+      el.classList.remove("grade-good", "grade-mid", "grade-bad");
+      if (goodPct >= 85) { el.textContent = t("gradeGood"); el.classList.add("grade-good"); }
+      else if (goodPct >= 65) { el.textContent = t("gradeMid"); el.classList.add("grade-mid"); }
+      else { el.textContent = t("gradeBad"); el.classList.add("grade-bad"); }
+    }
+
+    function updateSettingsLabels() {
+      triggerVal.textContent = currentLang === "en" ? `${Math.round(triggerSec)}s` : (currentLang === "ja" ? `${Math.round(triggerSec)}秒` : `${Math.round(triggerSec)}초`);
+      let desc = currentLang === "en" ? "Normal" : (currentLang === "ja" ? "普通" : "보통");
+      if (badThreshold <= 35) desc = currentLang === "en" ? "Strict" : (currentLang === "ja" ? "敏感" : "민감");
+      else if (badThreshold >= 55) desc = currentLang === "en" ? "Relaxed" : (currentLang === "ja" ? "緩やか" : "느슨");
+      badVal.textContent = `${badThreshold}% (${desc})`;
+      triggerSlider.value = String(Math.round(triggerSec));
+      badSlider.value = String(badThreshold);
+      const effectiveBad = Math.min(80, badThreshold + noiseMargin);
+      recoveryThreshold = Math.max(15, effectiveBad - 15);
+
+      if (currentLang === "en") {
+        adaptiveMarginText.textContent = `Auto margin: +${noiseMargin}% (Trigger ${effectiveBad}% / Release ${recoveryThreshold}%)`;
+        lockHintText.textContent = `Window unlocks automatically when risk drops below ${recoveryThreshold}%`;
+      } else if (currentLang === "ja") {
+        adaptiveMarginText.textContent = `自動補正余裕: +${noiseMargin}% (基準 ${effectiveBad}% / 解除 ${recoveryThreshold}%)`;
+        lockHintText.textContent = `危険度が ${recoveryThreshold}% 以下になるとロックが解除されます`;
+      } else {
+        adaptiveMarginText.textContent = `자동 보정 여유폭: +${noiseMargin}% (적용 기준 ${effectiveBad}% / 해제 ${recoveryThreshold}%)`;
+        lockHintText.textContent = `위험도가 ${recoveryThreshold}% 이하로 내려가면 마우스·키보드 잠금이 풀리고 창이 숨겨집니다`;
+      }
+    }
+
+    function pushSettingsToApp() {
+      const api = getPyApi();
+      if (api) {
+        api.update_settings(triggerSec, badThreshold, mannerModeEnabled, currentLang, alarmThreshold)
+          .then(renderStats).catch(() => {});
+      }
+    }
+
+    openSettingsBtn.addEventListener("click", () => settingsModal.classList.add("open"));
+    closeModalBtn.addEventListener("click", () => settingsModal.classList.remove("open"));
+    settingsModal.addEventListener("click", (e) => { if (e.target === settingsModal) settingsModal.classList.remove("open"); });
+
+    langSelect.addEventListener("change", () => { currentLang = langSelect.value; applyLanguageTexts(); pushSettingsToApp(); });
+    alarmSelect.addEventListener("change", () => { alarmThreshold = Number(alarmSelect.value); pushSettingsToApp(); });
+    testAlarmBtn.addEventListener("click", () => { const api = getPyApi(); if (api) api.test_alarm(); });
+    triggerSlider.addEventListener("input", () => { triggerSec = Number(triggerSlider.value); updateSettingsLabels(); pushSettingsToApp(); });
+    badSlider.addEventListener("input", () => { badThreshold = Number(badSlider.value); updateSettingsLabels(); pushSettingsToApp(); });
+    mannerCheck.addEventListener("change", () => { mannerModeEnabled = mannerCheck.checked; pushSettingsToApp(); });
+    resetBtn.addEventListener("click", () => { const api = getPyApi(); if (api) api.reset_stats().then(renderStats).catch(() => {}); });
+
+    function renderWeeklyChart(items) {
+      if (!items || items.length === 0) return;
+      weeklyChart.innerHTML = items.map((d) => {
+        const pct = d.has_data ? d.good_pct : 0;
+        const heightPct = d.has_data ? Math.max(10, pct) : 10;
+        let cls = d.has_data ? (pct >= 85 ? "good" : (pct >= 65 ? "mid" : "bad")) : "empty";
+        return `
+          <div class="bar-col">
+            <div class="bar-pct">${d.has_data ? pct + "%" : "-"}</div>
+            <div class="bar-track"><div class="bar-inner ${cls}" style="height: ${heightPct}%;"></div></div>
+            <div class="bar-day">${d.label}</div>
+          </div>`;
+      }).join("");
+    }
+
+    function stopCamera() {
+      if (poseTimer) { clearInterval(poseTimer); poseTimer = null; }
+      if (mediaStream) { mediaStream.getTracks().forEach((track) => track.stop()); mediaStream = null; }
+      videoEl.srcObject = null;
+      canvasEl.classList.add("paused-canvas");
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = "#020617"; ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+      ctx.fillStyle = "#94a3b8"; ctx.font = "bold 22px Malgun Gothic, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(t("pausedStatus"), canvasEl.width / 2, canvasEl.height / 2);
+      ctx.restore();
+      statusText.textContent = t("pausedStatus");
+      statusText.classList.remove("warn"); statusText.classList.add("paused");
+      document.body.classList.remove("locked"); lockScreen.classList.remove("active");
+    }
+
+    function startCamera() {
+      canvasEl.classList.remove("paused-canvas");
+      if (mediaStream) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusText.textContent = "웹캠 API를 지원하지 않는 환경입니다 (WebView2 확인 필요)";
+        statusText.classList.add("warn");
+        return;
+      }
+      statusText.textContent = "웹캠 연결 중...";
+      navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }, audio: false })
+        .then(async (stream) => {
+          if (!enabled) { stream.getTracks().forEach((track) => track.stop()); return; }
+          mediaStream = stream;
+          videoEl.srcObject = stream;
+          try { await videoEl.play(); } catch (e) {}
+          statusText.classList.remove("paused", "warn");
+          statusText.textContent = pose ? t("needCalib") : "AI 모델 로딩 중... (인터넷 연결 확인)";
+          if (!poseTimer) {
+            poseTimer = setInterval(async () => {
+              if (!enabled || processing || videoEl.readyState < 2 || !pose) return;
+              processing = true;
+              try {
+                await pose.send({ image: videoEl });
+              } catch (err) {
+                console.error("Pose error:", err);
+                statusText.textContent = "AI 모델 분석 대기 중...";
+              } finally {
+                processing = false;
+              }
+            }, 100);
+          }
+        })
+        .catch((err) => {
+          console.error("Camera error:", err);
+          statusText.classList.add("warn");
+          if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+            statusText.textContent = "카메라 권한이 거부되었습니다. Windows 설정 > 개인 정보 > 카메라를 허용해 주세요.";
+          } else if (err && (err.name === "NotFoundError" || err.name === "DevicesNotFoundError")) {
+            statusText.textContent = "연결된 웹캠을 찾을 수 없습니다. 카메라 연결을 확인해 주세요.";
+          } else if (err && (err.name === "NotReadableError" || err.name === "TrackStartError")) {
+            statusText.textContent = "다른 프로그램에서 웹캠을 사용 중입니다. 종료 후 다시 실행해 주세요.";
+          } else {
+            statusText.textContent = `웹캠 오류: ${(err && err.message) || t("modelWait")}`;
+          }
+        });
+    }
+
+    function applyEnabledState(nextEnabled) {
+      const prevEnabled = enabled;
+      enabled = Boolean(nextEnabled);
+      if (!enabled) {
+        warningActive = false; badSince = null;
+        if (prevEnabled || mediaStream) stopCamera();
+      } else if (!prevEnabled) {
+        startCamera();
+      }
+      updateToggleButton();
+    }
+
+    function renderStats(data) {
+      if (!data) return;
+      if (typeof data.language === "string" && I18N[data.language] && data.language !== currentLang) {
+        currentLang = data.language; langSelect.value = currentLang; applyLanguageTexts();
+      }
+      if (typeof data.alarm_threshold === "number") { alarmThreshold = data.alarm_threshold; alarmSelect.value = String(alarmThreshold); }
+      if (typeof data.enabled === "boolean") applyEnabledState(data.enabled);
+      if (typeof data.trigger_sec === "number") triggerSec = data.trigger_sec;
+      if (typeof data.bad_threshold === "number") badThreshold = data.bad_threshold;
+      if (typeof data.manner_mode_enabled === "boolean") { mannerModeEnabled = data.manner_mode_enabled; mannerCheck.checked = mannerModeEnabled; }
+      activeMeetingApp = data.active_meeting_app || "";
+      if (activeMeetingApp && mannerModeEnabled) {
+        mannerBadge.textContent = `🤫 ${activeMeetingApp}`;
+        mannerBadge.classList.add("active");
+      } else {
+        mannerBadge.classList.remove("active");
+      }
+      updateSettingsLabels();
+
+      const unitCnt = currentLang === "en" ? "" : "회";
+      todayCountDur.textContent = `${data.today_count ?? 0}${unitCnt} · ${fmtDur(data.today_duration_sec)}`;
+      todayAvgSub.textContent = currentLang === "en" ? `Today avg risk ${data.today_avg_score ?? 0}%` : (currentLang === "ja" ? `今日の平均危険度 ${data.today_avg_score ?? 0}%` : `오늘 평균 위험도 ${data.today_avg_score ?? 0}%`);
+      totalCountDur.textContent = `${data.total_count ?? 0}${unitCnt} · ${fmtDur(data.total_duration_sec)}`;
+      totalAvgSub.textContent = currentLang === "en" ? `Overall avg risk ${data.total_avg_score ?? 0}%` : (currentLang === "ja" ? `全体の平均危険度 ${data.total_avg_score ?? 0}%` : `전체 평균 위험도 ${data.total_avg_score ?? 0}%`);
+
+      const tGood = data.today_good_pct ?? 100, allGood = data.total_good_pct ?? 100;
+      applyGrade(todayGrade, tGood);
+      todayGoodSub.textContent = currentLang === "en" ? `Good posture ${tGood}%` : (currentLang === "ja" ? `正しい姿勢率 ${tGood}%` : `바른 자세 유지율 ${tGood}%`);
+      applyGrade(totalGrade, allGood);
+      totalGoodSub.textContent = currentLang === "en" ? `Overall good posture ${allGood}%` : (currentLang === "ja" ? `全体の正しい姿勢率 ${allGood}%` : `전체 바른 자세 유지율 ${allGood}%`);
+
+      if (data.weekly_history) renderWeeklyChart(data.weekly_history);
+      const events = data.recent_events || [];
+      eventList.innerHTML = events.length === 0
+        ? `<li class="event-empty">${t("noEvents")}</li>`
+        : [...events].reverse().map((ev) => `<li class="event-item"><span>${ev.time}</span><span>${ev.score}%</span></li>`).join("");
+    }
+
+    function updateToggleButton() {
+      toggleBtn.classList.toggle("off", !enabled);
+      toggleBtn.textContent = enabled ? t("onBtn") : t("offBtn");
+      modeBadge.classList.toggle("off", !enabled);
+      modeBadge.textContent = enabled ? t("onLabel") : t("offLabel");
+    }
+
+    window.renderStats = renderStats;
+
+    toggleBtn.addEventListener("click", () => {
+      const api = getPyApi();
+      if (api) api.toggle().then(renderStats).catch(() => {});
+    });
+
+    calibBtn.addEventListener("click", () => { calibrating = true; calibSamples = []; calibStart = performance.now(); });
+
+    recalibBtn.addEventListener("click", () => {
+      if (!latestMetrics) { statusText.textContent = t("noPerson"); return; }
+      if (baseEyeDist === null || baseNeckRatio === null) {
+        baseEyeDist = latestMetrics.eyeDist; baseNeckRatio = latestMetrics.neckRatio;
+      } else {
+        baseEyeDist = baseEyeDist * 0.65 + latestMetrics.eyeDist * 0.35;
+        baseNeckRatio = baseNeckRatio * 0.65 + latestMetrics.neckRatio * 0.35;
+      }
+      noiseMargin = Math.min(15, noiseMargin + 3);
+      emaScore = 0; badSince = null; warningActive = false;
+      updateSettingsLabels();
+      statusText.textContent = `+${noiseMargin}%`;
+      sendStatus(0, false, true, true);
+    });
+
+    function updateDemoBadge() {
+      if (!demoModeActive) { demoBadge.classList.remove("active"); return; }
+      const label = currentLang === "en" ? "Demo" : (currentLang === "ja" ? "デモ" : "시연");
+      demoBadge.textContent = `🎬 ${label} ${demoRemainSec}s`;
+      demoBadge.classList.add("active");
+    }
+
+    function stopDemoMode() {
+      demoModeActive = false; demoModeCheck.checked = false;
+      if (demoInterval) { clearInterval(demoInterval); demoInterval = null; }
+      updateDemoBadge(); badSince = null;
+      if (warningActive) { warningActive = false; sendStatus(0, false, baseEyeDist !== null, true); }
+    }
+
+    function startDemoMode() {
+      stopDemoMode(); demoModeActive = true; demoModeCheck.checked = true; demoRemainSec = 60; updateDemoBadge();
+      demoInterval = setInterval(() => {
+        demoRemainSec -= 1;
+        if (demoRemainSec <= 0) stopDemoMode(); else updateDemoBadge();
+      }, 1000);
+    }
+
+    demoModeCheck.addEventListener("change", () => { if (demoModeCheck.checked) startDemoMode(); else stopDemoMode(); });
+
+    function sendStatus(score, warning, calibrated, force = false) {
+      const now = performance.now();
+      if (!force && now - lastSent < 150) return;
+      lastSent = now;
+      const api = getPyApi();
+      if (api) api.send_status(Math.round(score), Boolean(warning), Boolean(calibrated)).then(renderStats).catch(() => {});
+    }
+
+    window.addEventListener("pywebviewready", () => {
+      const api = getPyApi();
+      if (api) api.get_state().then(renderStats).catch(() => {});
+    });
+
+    function onResults(results) {
+      const w = canvasEl.width, h = canvasEl.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(results.image, 0, 0, w, h);
+
+      let msg = t("needCalib");
+      if (results.poseLandmarks) {
+        const lm = results.poseLandmarks;
+        const nose = lm[0], lEye = lm[2], rEye = lm[5], lSh = lm[11], rSh = lm[12];
+        for (const pt of [nose, lEye, rEye, lSh, rSh]) {
+          ctx.beginPath(); ctx.arc(pt.x * w, pt.y * h, 6, 0, Math.PI * 2);
+          ctx.fillStyle = "#38bdf8"; ctx.fill();
+        }
+        const eyeDist = Math.hypot((lEye.x - rEye.x) * w, (lEye.y - rEye.y) * h);
+        const shMidY = ((lSh.y + rSh.y) / 2) * h;
+        const neckRatio = Math.max(1, shMidY - nose.y * h) / Math.max(eyeDist, 1);
+        latestMetrics = { eyeDist, neckRatio };
+
+        if (calibrating) {
+          const elapsed = (performance.now() - calibStart) / 1000;
+          calibSamples.push({ eyeDist, neckRatio });
+          msg = `${Math.max(0, 3.0 - elapsed).toFixed(1)}s`;
+          if (elapsed >= 3.0 && calibSamples.length > 0) {
+            const n = calibSamples.length;
+            baseEyeDist = calibSamples.reduce((a, b) => a + b.eyeDist, 0) / n;
+            baseNeckRatio = calibSamples.reduce((a, b) => a + b.neckRatio, 0) / n;
+            const varEye = calibSamples.reduce((a, b) => a + Math.pow(b.eyeDist - baseEyeDist, 2), 0) / n;
+            const varNeck = calibSamples.reduce((a, b) => a + Math.pow(b.neckRatio - baseNeckRatio, 2), 0) / n;
+            noiseMargin = Math.min(12, Math.round((Math.sqrt(varEye) / Math.max(baseEyeDist, 1) + Math.sqrt(varNeck) / Math.max(baseNeckRatio, 0.1)) * 180));
+            updateSettingsLabels();
+            calibrating = false; emaScore = 0; badSince = null; warningActive = false;
+            msg = t("goodPosture");
+          }
+        } else if (baseEyeDist !== null) {
+          const scaleRatio = eyeDist / baseEyeDist;
+          const dropRatio = baseNeckRatio / Math.max(neckRatio, 0.1);
+          const rawScore = Math.min(100, Math.max(0, (scaleRatio - 1.0) * 280) + Math.max(0, (dropRatio - 1.0) * 180));
+          emaScore = 0.25 * rawScore + 0.75 * emaScore;
+
+          if (!enabled) {
+            badSince = null; warningActive = false; msg = t("pausedOff");
+          } else {
+            const now = performance.now() / 1000;
+            const activeTriggerSec = demoModeActive ? 1.5 : triggerSec;
+            const effectiveBad = demoModeActive ? Math.min(35, badThreshold + noiseMargin) : Math.min(80, badThreshold + noiseMargin);
+            if (emaScore >= effectiveBad) {
+              if (badSince === null) badSince = now;
+              const held = now - badSince;
+              if (held >= activeTriggerSec) { warningActive = true; msg = `${t("lockTitle")} (${held.toFixed(1)}s)`; }
+              else { msg = `${held.toFixed(1)} / ${activeTriggerSec.toFixed(1)}s`; }
+            } else {
+              badSince = null;
+              if (emaScore < recoveryThreshold) { warningActive = false; msg = t("goodPosture"); }
+              else if (warningActive) { msg = `${t("lockTitle")} (${recoveryThreshold}%)`; }
+              else { msg = t("goodPosture"); }
+            }
+          }
+        }
+      } else {
+        msg = !enabled ? t("pausedOff") : (warningActive ? t("lockTitle") : t("noPerson"));
+        badSince = null;
+      }
+
+      const pct = Math.round(emaScore);
+      const effectiveLock = warningActive && !(activeMeetingApp && mannerModeEnabled);
+      statusText.textContent = msg;
+      statusText.classList.toggle("warn", warningActive);
+      statusText.classList.toggle("paused", !enabled);
+      document.body.classList.toggle("locked", effectiveLock);
+      lockScreen.classList.toggle("active", effectiveLock);
+      lockTitleText.textContent = t("lockTitle");
+      lockSubText.textContent = currentLang === "en" ? `Current Posture Risk: ${pct}%` : (currentLang === "ja" ? `現在のストレートネック危険度: ${pct}%` : `현재 거북목 위험도: ${pct}%`);
+      lockBarFill.style.width = `${pct}%`;
+      scoreText.textContent = `${pct}%`;
+      barFill.style.width = `${pct}%`;
+      sendStatus(emaScore, warningActive, baseEyeDist !== null);
+    }
+
+    let pose = null;
+    if (typeof Pose !== "undefined") {
+      pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}` });
+      pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+      pose.onResults(onResults);
+      if (typeof pose.initialize === "function") {
+        pose.initialize().catch((e) => {
+          console.error("Pose init failed:", e);
+          statusText.textContent = "AI 모델 다운로드 실패 (인터넷 연결을 확인해 주세요)";
+          statusText.classList.add("warn");
+        });
+      }
+    } else {
+      statusText.textContent = "AI 모델 스크립트 로드 실패 (인터넷 연결을 확인해 주세요)";
+      statusText.classList.add("warn");
+    }
+
+    applyLanguageTexts();
+    startCamera();
+  </script>
+</body>
+</html>
